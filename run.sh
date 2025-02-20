@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. ./jvm.conf
+
 export NUMBEROFSYMBOL=100000
 export LENGTH=3
 export NUMBEROFTHREADS=1
