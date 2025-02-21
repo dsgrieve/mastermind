@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mastermind Performance Diagnostic</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ccc;
+            overflow-x: auto;
+        }
+        ul {
+            margin: 0;
+            padding: 0 0 0 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Application Performance Diagnostic Report</h1>
+    <h2>Application: mastermind / mastermind</h2>
+
+    <h3>Trigger Details</h3>
+    <strong>Trigger:</strong> SLA latency violation<br>
+    <strong>Trigger Time:</strong> 2025-02-19, 1:29:54 PM<br>
+    <strong>Trigger Action:</strong> Generate a profile for 30 seconds<br>
+    <strong>Triggering Conditions:</strong> Latency of X exceeded the threshold of X<br>
+
+    <h3>Probable Cause</h3>
+    <p>mastermind has very high allocation rates</p>
+
+    <h3>Recommended Action(s)</h3>
+    <p>Try one or more of the following solutions to solve this issue:</p>
+    <ul>
+        <li>Remove or breakup hot allocation sites</li>
+    </ul>
+
+    <h3>Allocation Activity</h3>
+    <h4>Top Allocators</h4>
+    <pre>
+Object Name                     Number Allocated
+java.math.MutableBigInteger     14,622,930
+    </pre>
+
+    <h3>Supporting Data</h3>
+    <h4>1. Allocation Stack Traces</h4>
+    <pre>
+java.math.MutableBigInteger
+  java.lang.Object.<init>
+    java.math.MutableBigInteger.<init>
+      java.math.BigInteger.remainderKnuth
+        java.math.BigInteger.remainder
+          com.kodewerk.math.Index.remainder
+            com.kodewerk.math.ArrangementGroup.calculateElementIndex
+            com.kodewerk.math.ArrangementGroup.calculateIndex
+            com.kodewerk.math.ArrangementGroup.getMember
+    java.math.MutableBigInteger.<init>
+      java.math.BigInteger.remainderKnuth
+        java.math.BigInteger.remainder
+          com.kodewerk.math.Index.remainder
+            com.kodewerk.math.ArrangementGroup.calculateElementIndex
+            com.kodewerk.math.ArrangementGroup.calculateElementIndex
+            com.kodewerk.math.ArrangementGroup.getMember
+      java.math.MutableBigInteger.divideKnuth
+        java.math.BigInteger.divide
+          com.kodewerk.math.Index.divide
+            com.kodewerk.math.ArrangementGroup.calculateElementIndex
+              com.kodewerk.math.ArrangementGroup.getMember
+            com.kodewerk.math.ArrangementGroup.calculateElementIndex
+              com.kodewerk.math.ArrangementGroup.getMember
+    java.math.MutableBigInteger.<init>
+      java.math.MutableBigInteger.divideKnuth
+        java.math.MutableBigInteger.divideKnuth
+          java.math.BigInteger.remainderKnuth
+            java.math.BigInteger.remainder
+              com.kodewerk.math.Index.remainder
+                com.kodewerk.math.ArrangementGroup.calculateIndex
+                com.kodewerk.math.ArrangementGroup.getMember
+                com.kodewerk.math.ArrangementGroup.calculateElementIndex
+    java.math.MutableBigInteger.<init>
+      java.math.MutableBigInteger.divideKnuth
+        java.math.MutableBigInteger.divideKnuth
+          java.math.BigInteger.remainderKnuth
+            java.math.BigInteger.remainder
+              com.kodewerk.math.Index.remainder
+                com.kodewerk.math.ArrangementGroup.calculateElementIndex
+                  com.kodewerk.math.ArrangementGroup.calculateElementIndex
+                    com.kodewerk.math.ArrangementGroup.getMember
+    </pre>
+
+    <h4>2. Allocation Rates</h4>
+    <p>Current allocation rate is a sustained 154GB/second.</p>
+
+</body>
+</html>
