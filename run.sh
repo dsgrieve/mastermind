@@ -13,4 +13,4 @@ export FLAGS="$COLLECTORS $MEMORY $GC_LOGGING $JITWATCH"
 echo "Settings--->${FLAGS}"
 
 #  GUI Version
-java -classpath classes ${FLAGS} com.kodewerk.mastermind.MasterMindGUI $ARGS > mastermind.txt
+java -classpath target/classes ${FLAGS} com.kodewerk.mastermind.MasterMindGUI $ARGS > mastermind.txt
