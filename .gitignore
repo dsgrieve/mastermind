@@ -27,5 +27,6 @@ replay_pid*
 .DS_Store
 
 #IntelliJ
+.idea/
 mastermind.iml
 mastermind.txt
