@@ -63,4 +63,30 @@ public class Index {
     public Index multiply(Index index) {
         return new Index(value.multiply(index.value));
     }
+
+    // Reuse BigInteger instances to reduce allocations
+    public Index addInPlace(Index index) {
+        this.value = this.value.add(index.value);
+        return this;
+    }
+
+    public Index remainderInPlace(Index foldValue) {
+        this.value = this.value.remainder(foldValue.value);
+        return this;
+    }
+
+    public Index divideInPlace(Index divisor) {
+        this.value = this.value.divide(divisor.value);
+        return this;
+    }
+
+    public Index absInPlace() {
+        this.value = this.value.abs();
+        return this;
+    }
+
+    public Index multiplyInPlace(Index index) {
+        this.value = this.value.multiply(index.value);
+        return this;
+    }
 }

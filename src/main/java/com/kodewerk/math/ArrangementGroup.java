@@ -33,7 +33,7 @@ public class ArrangementGroup {
      */
     public Arrangement getMember(Index i) {
         int[] elements = new int[arrangementLength];
-        this.calculateElementIndex(elements, 0, i.remainder(getLength()),
+        this.calculateElementIndex(elements, 0, i.remainderInPlace(getLength()),
                 this.arrangementLength, this.symbols, numberOfSymbols);
         return new Arrangement(elements);
     }
@@ -45,17 +45,17 @@ public class ArrangementGroup {
         // end of recursion.
         // formulation is a bit ugly because Index constructor doesn't accept int as parameter
         if (elementLength == 1) {
-            results[position] = symbols[index.remainder(new Index(Integer.toString(remainingSymbols))).intValue()];
+            results[position] = symbols[index.remainderInPlace(new Index(Integer.toString(remainingSymbols))).intValue()];
             return;
         }
 
         Index foldValue = Math.permutationAsIndex(remainingSymbols - 1,
                 elementLength - 1);
-        int symbolPosition = index.divide(foldValue).intValue();
+        int symbolPosition = index.divideInPlace(foldValue).intValue();
         results[position] = symbols[symbolPosition];
 
         // we've calculated the nth position, now we can reduce the problem by one and repeat for nth-1.
-        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainder(
+        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainderInPlace(
                 foldValue) : index;
         int[] newSymbols = removeSymbol(symbols, symbolPosition);
         this.calculateElementIndex(results, position + 1, newIndex,
@@ -84,7 +84,7 @@ public class ArrangementGroup {
      * @return Index index
      */
     public Index calculateIndex(Index current, Index increment) {
-        return current.add(increment).remainder(this.getLength());
+        return current.addInPlace(increment).remainderInPlace(this.getLength());
     }
 
     public Arrangement getRandomMember() {
@@ -93,7 +93,7 @@ public class ArrangementGroup {
         byte[] random = new byte[numberOfBytes + (generator.nextInt() % numberOfBytes)];
         generator.nextBytes(random);
         Index index = new Index(random);
-        index = index.abs().remainder(this.getLength());
+        index = index.absInPlace().remainderInPlace(this.getLength());
         return this.getMember(index);
     }
 }
