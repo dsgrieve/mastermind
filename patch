@@ -1,0 +1,2079 @@
+commit 8ef480a4769e72d6d35028617cb47e73b715fad9
+Author: David Grieve <dsgrieve@yahoo.com>
+Date:   Wed Mar 5 14:39:17 2025 -0500
+
+    Optimize Index and ArrangementGroup classes to reduce high allocation rates
+
+diff --git a/pom.xml b/pom.xml
+index dc57092..e69de29 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -1,37 +0,0 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+-    <modelVersion>4.0.0</modelVersion>
+-
+-    <groupId>com.kodewerk</groupId>
+-    <artifactId>mastermind</artifactId>
+-    <version>1.0-SNAPSHOT</version>
+-
+-    <properties>
+-        <maven.compiler.source>1.8</maven.compiler.source>
+-        <maven.compiler.target>1.8</maven.compiler.target>
+-    </properties>
+-
+-    <dependencies>
+-        <!-- Add your project dependencies here -->
+-        <dependency>
+-            <groupId>junit</groupId>
+-            <artifactId>junit</artifactId>
+-            <version>4.12</version>
+-            <scope>test</scope>
+-        </dependency>
+-    </dependencies>
+-
+-    <build>
+-        <plugins>
+-            <plugin>
+-                <groupId>org.apache.maven.plugins</groupId>
+-                <artifactId>maven-compiler-plugin</artifactId>
+-                <version>3.8.1</version>
+-                <configuration>
+-                    <source>1.8</source>
+-                    <target>1.8</target>
+-                </configuration>
+-            </plugin>
+-        </plugins>
+-    </build>
+-</project>
+diff --git a/src/main/java/com/kodewerk/math/ArrangementGroup.java b/src/main/java/com/kodewerk/math/ArrangementGroup.java
+index f031dcc..1daf1b3 100644
+--- a/src/main/java/com/kodewerk/math/ArrangementGroup.java
++++ b/src/main/java/com/kodewerk/math/ArrangementGroup.java
+@@ -33,7 +33,7 @@ public class ArrangementGroup {
+      */
+     public Arrangement getMember(Index i) {
+         int[] elements = new int[arrangementLength];
+-        this.calculateElementIndex(elements, 0, i.remainder(getLength()),
++        this.calculateElementIndex(elements, 0, i.remainderInPlace(getLength()),
+                 this.arrangementLength, this.symbols, numberOfSymbols);
+         return new Arrangement(elements);
+     }
+@@ -45,17 +45,17 @@ public class ArrangementGroup {
+         // end of recursion.
+         // formulation is a bit ugly because Index constructor doesn't accept int as parameter
+         if (elementLength == 1) {
+-            results[position] = symbols[index.remainder(new Index(Integer.toString(remainingSymbols))).intValue()];
++            results[position] = symbols[index.remainderInPlace(new Index(Integer.toString(remainingSymbols))).intValue()];
+             return;
+         }
+ 
+         Index foldValue = Math.permutationAsIndex(remainingSymbols - 1,
+                 elementLength - 1);
+-        int symbolPosition = index.divide(foldValue).intValue();
++        int symbolPosition = index.divideInPlace(foldValue).intValue();
+         results[position] = symbols[symbolPosition];
+ 
+         // we've calculated the nth position, now we can reduce the problem by one and repeat for nth-1.
+-        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainder(
++        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainderInPlace(
+                 foldValue) : index;
+         int[] newSymbols = removeSymbol(symbols, symbolPosition);
+         this.calculateElementIndex(results, position + 1, newIndex,
+@@ -84,7 +84,7 @@ public class ArrangementGroup {
+      * @return Index index
+      */
+     public Index calculateIndex(Index current, Index increment) {
+-        return current.add(increment).remainder(this.getLength());
++        return current.addInPlace(increment).remainderInPlace(this.getLength());
+     }
+ 
+     public Arrangement getRandomMember() {
+@@ -93,7 +93,7 @@ public class ArrangementGroup {
+         byte[] random = new byte[numberOfBytes + (generator.nextInt() % numberOfBytes)];
+         generator.nextBytes(random);
+         Index index = new Index(random);
+-        index = index.abs().remainder(this.getLength());
++        index = index.absInPlace().remainderInPlace(this.getLength());
+         return this.getMember(index);
+     }
+ }
+diff --git a/src/main/java/com/kodewerk/math/Index.java b/src/main/java/com/kodewerk/math/Index.java
+index 6a590a8..8aee8b5 100644
+--- a/src/main/java/com/kodewerk/math/Index.java
++++ b/src/main/java/com/kodewerk/math/Index.java
+@@ -63,4 +63,30 @@ public class Index {
+     public Index multiply(Index index) {
+         return new Index(value.multiply(index.value));
+     }
++
++    // Reuse BigInteger instances to reduce allocations
++    public Index addInPlace(Index index) {
++        this.value = this.value.add(index.value);
++        return this;
++    }
++
++    public Index remainderInPlace(Index foldValue) {
++        this.value = this.value.remainder(foldValue.value);
++        return this;
++    }
++
++    public Index divideInPlace(Index divisor) {
++        this.value = this.value.divide(divisor.value);
++        return this;
++    }
++
++    public Index absInPlace() {
++        this.value = this.value.abs();
++        return this;
++    }
++
++    public Index multiplyInPlace(Index index) {
++        this.value = this.value.multiply(index.value);
++        return this;
++    }
+ }
+diff --git a/src/test/java/com/kodewerk/math/ArrangementGroupTest.java b/src/test/java/com/kodewerk/math/ArrangementGroupTest.java
+index 0c4cc7f..e69de29 100644
+--- a/src/test/java/com/kodewerk/math/ArrangementGroupTest.java
++++ b/src/test/java/com/kodewerk/math/ArrangementGroupTest.java
+@@ -1,16 +0,0 @@
+-package com.kodewerk.math;
+-
+-import org.junit.Test;
+-import static org.junit.Assert.*;
+-
+-public class ArrangementGroupTest {
+-
+-    @Test
+-    public void testGetMember() {
+-        Arrangement expected = new Arrangement(new int[]{0,65,20130});
+-            ArrangementGroup group = new ArrangementGroup(3, 100000);
+-            Index index = new Index("6420000");
+-            Arrangement arrangement = group.getMember(index);
+-            assertEquals(expected, arrangement);
+-    }
+-}
+
+commit df339c52e7c13d78846316cd8f2da85355b32f6a
+Author: kcpeppe <kirk@kodewerk.com>
+Date:   Sun Feb 23 15:58:15 2025 -0800
+
+    refactor: make it all run with our without maven installed locally
+
+diff --git a/compile.sh b/compile.sh
+index 20662cc..8f86e40 100755
+--- a/compile.sh
++++ b/compile.sh
+@@ -1,8 +1,14 @@
+ #!/bin/sh
+ 
+-if [ -d classes ]
+-then
+-    mkdir classes
+-fi
++export MVN=`which mvn | rev | cut -d'/' -f 1`
+ 
+-javac -classpath classes -d classes src/main/java/com/kodewerk/mastermind/*.java src/main/java/com/kodewerk/math/*.java
++if [ "$MVN" = "nvm" ]
++then 
++  mvn clean verify
++else
++  if [ -d target ]
++  then
++    rm -rf target
++  fi
++  javac -classpath target/classes -d target/classes src/main/java/com/kodewerk/mastermind/*.java src/main/java/com/kodewerk/math/*.java
++fi
+diff --git a/run.sh b/run.sh
+index 1efeac8..840d580 100755
+--- a/run.sh
++++ b/run.sh
+@@ -13,4 +13,4 @@ export FLAGS="$COLLECTORS $MEMORY $GC_LOGGING $JITWATCH"
+ echo "Settings--->${FLAGS}"
+ 
+ #  GUI Version
+-java -classpath classes ${FLAGS} com.kodewerk.mastermind.MasterMindGUI $ARGS > mastermind.txt
++java -classpath target/classes ${FLAGS} com.kodewerk.mastermind.MasterMindGUI $ARGS > mastermind.txt
+
+commit a0b83c429a459977cb670060c89e3f6bdcc0d590
+Author: kcpeppe <kirk@kodewerk.com>
+Date:   Sun Feb 23 15:00:39 2025 -0800
+
+    refactor: ignore more idea files
+
+diff --git a/.gitignore b/.gitignore
+index e866f47..fb0862f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -27,5 +27,6 @@ replay_pid*
+ .DS_Store
+ 
+ #IntelliJ
++.idea/
+ mastermind.iml
+ mastermind.txt
+
+commit aa5ee9ea610553d30bfbe3addaf832ebec81a4ae
+Merge: fc18cf1 43e66f4
+Author: Kirk Pepperdine <kirk@kodewerk.com>
+Date:   Fri Feb 21 14:20:59 2025 -0800
+
+    Merge pull request #1 from dsgrieve/dagrieve/add-pom-file
+    
+    add pom file
+
+commit 43e66f43c8e9e1e2ae7395b7433d64d162b0af94
+Author: David Grieve <dagrieve@microsoft.com>
+Date:   Fri Feb 21 16:06:43 2025 -0500
+
+    add ArrangementGroupTest
+
+diff --git a/src/test/java/com/kodewerk/math/ArrangementGroupTest.java b/src/test/java/com/kodewerk/math/ArrangementGroupTest.java
+new file mode 100644
+index 0000000..0c4cc7f
+--- /dev/null
++++ b/src/test/java/com/kodewerk/math/ArrangementGroupTest.java
+@@ -0,0 +1,16 @@
++package com.kodewerk.math;
++
++import org.junit.Test;
++import static org.junit.Assert.*;
++
++public class ArrangementGroupTest {
++
++    @Test
++    public void testGetMember() {
++        Arrangement expected = new Arrangement(new int[]{0,65,20130});
++            ArrangementGroup group = new ArrangementGroup(3, 100000);
++            Index index = new Index("6420000");
++            Arrangement arrangement = group.getMember(index);
++            assertEquals(expected, arrangement);
++    }
++}
+
+commit 1f462aee79f2cad07ef9fc615320e5392de9c04c
+Author: David Grieve <dagrieve@microsoft.com>
+Date:   Fri Feb 21 15:53:46 2025 -0500
+
+    add pom file
+
+diff --git a/pom.xml b/pom.xml
+new file mode 100644
+index 0000000..dc57092
+--- /dev/null
++++ b/pom.xml
+@@ -0,0 +1,37 @@
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++    <modelVersion>4.0.0</modelVersion>
++
++    <groupId>com.kodewerk</groupId>
++    <artifactId>mastermind</artifactId>
++    <version>1.0-SNAPSHOT</version>
++
++    <properties>
++        <maven.compiler.source>1.8</maven.compiler.source>
++        <maven.compiler.target>1.8</maven.compiler.target>
++    </properties>
++
++    <dependencies>
++        <!-- Add your project dependencies here -->
++        <dependency>
++            <groupId>junit</groupId>
++            <artifactId>junit</artifactId>
++            <version>4.12</version>
++            <scope>test</scope>
++        </dependency>
++    </dependencies>
++
++    <build>
++        <plugins>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-compiler-plugin</artifactId>
++                <version>3.8.1</version>
++                <configuration>
++                    <source>1.8</source>
++                    <target>1.8</target>
++                </configuration>
++            </plugin>
++        </plugins>
++    </build>
++</project>
+
+commit fc18cf1d7bfeb95b52ecf22831638fabd38368c4
+Author: kcpeppe <kirk@kodewerk.com>
+Date:   Thu Feb 20 17:03:15 2025 -0800
+
+    refactor: add in illuminate like report
+
+diff --git a/mastermind-report.html b/mastermind-report.html
+new file mode 100644
+index 0000000..5838f09
+--- /dev/null
++++ b/mastermind-report.html
+@@ -0,0 +1,105 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Mastermind Performance Diagnostic</title>
++    <style>
++        body {
++            font-family: Arial, sans-serif;
++            line-height: 1.6;
++            margin: 20px;
++        }
++        h1, h2, h3 {
++            color: #333;
++        }
++        pre {
++            background-color: #f4f4f4;
++            padding: 10px;
++            border: 1px solid #ccc;
++            overflow-x: auto;
++        }
++        ul {
++            margin: 0;
++            padding: 0 0 0 20px;
++        }
++    </style>
++</head>
++<body>
++
++    <h1>Application Performance Diagnostic Report</h1>
++    <h2>Application: mastermind / mastermind</h2>
++
++    <h3>Trigger Details</h3>
++    <strong>Trigger:</strong> SLA latency violation<br>
++    <strong>Trigger Time:</strong> 2025-02-19, 1:29:54 PM<br>
++    <strong>Trigger Action:</strong> Generate a profile for 30 seconds<br>
++    <strong>Triggering Conditions:</strong> Latency of X exceeded the threshold of X<br>
++
++    <h3>Probable Cause</h3>
++    <p>mastermind has very high allocation rates</p>
++
++    <h3>Recommended Action(s)</h3>
++    <p>Try one or more of the following solutions to solve this issue:</p>
++    <ul>
++        <li>Remove or breakup hot allocation sites</li>
++    </ul>
++
++    <h3>Allocation Activity</h3>
++    <h4>Top Allocators</h4>
++    <pre>
++Object Name                     Number Allocated
++java.math.MutableBigInteger     14,622,930
++    </pre>
++
++    <h3>Supporting Data</h3>
++    <h4>1. Allocation Stack Traces</h4>
++    <pre>
++java.math.MutableBigInteger
++  java.lang.Object.<init>
++    java.math.MutableBigInteger.<init>
++      java.math.BigInteger.remainderKnuth
++        java.math.BigInteger.remainder
++          com.kodewerk.math.Index.remainder
++            com.kodewerk.math.ArrangementGroup.calculateElementIndex
++            com.kodewerk.math.ArrangementGroup.calculateIndex
++            com.kodewerk.math.ArrangementGroup.getMember
++    java.math.MutableBigInteger.<init>
++      java.math.BigInteger.remainderKnuth
++        java.math.BigInteger.remainder
++          com.kodewerk.math.Index.remainder
++            com.kodewerk.math.ArrangementGroup.calculateElementIndex
++            com.kodewerk.math.ArrangementGroup.calculateElementIndex
++            com.kodewerk.math.ArrangementGroup.getMember
++      java.math.MutableBigInteger.divideKnuth
++        java.math.BigInteger.divide
++          com.kodewerk.math.Index.divide
++            com.kodewerk.math.ArrangementGroup.calculateElementIndex
++              com.kodewerk.math.ArrangementGroup.getMember
++            com.kodewerk.math.ArrangementGroup.calculateElementIndex
++              com.kodewerk.math.ArrangementGroup.getMember
++    java.math.MutableBigInteger.<init>
++      java.math.MutableBigInteger.divideKnuth
++        java.math.MutableBigInteger.divideKnuth
++          java.math.BigInteger.remainderKnuth
++            java.math.BigInteger.remainder
++              com.kodewerk.math.Index.remainder
++                com.kodewerk.math.ArrangementGroup.calculateIndex
++                com.kodewerk.math.ArrangementGroup.getMember
++                com.kodewerk.math.ArrangementGroup.calculateElementIndex
++    java.math.MutableBigInteger.<init>
++      java.math.MutableBigInteger.divideKnuth
++        java.math.MutableBigInteger.divideKnuth
++          java.math.BigInteger.remainderKnuth
++            java.math.BigInteger.remainder
++              com.kodewerk.math.Index.remainder
++                com.kodewerk.math.ArrangementGroup.calculateElementIndex
++                  com.kodewerk.math.ArrangementGroup.calculateElementIndex
++                    com.kodewerk.math.ArrangementGroup.getMember
++    </pre>
++
++    <h4>2. Allocation Rates</h4>
++    <p>Current allocation rate is a sustained 154GB/second.</p>
++
++</body>
++</html>
+
+commit 1dd2a344b2f299cf811e2c60301d8b3b821202dc
+Author: kcpeppe <kirk@kodewerk.com>
+Date:   Thu Feb 20 15:41:29 2025 -0800
+
+    refactor: fix run.sh to take configuration from jvm.conf
+
+diff --git a/jvm.conf b/jvm.conf
+new file mode 100755
+index 0000000..336c1b7
+--- /dev/null
++++ b/jvm.conf
+@@ -0,0 +1,61 @@
++#!/bin/sh
++
++# File is set into 3 sections
++# 1: collector choices
++# 2: memory pool configurations
++# 3: log settings
++
++##################################################
++# Collectors
++
++# Select one collector for YOUNG and one for TENURED
++# or, set to G1
++#
++#export YOUNG="-XX:+UseParNewGC"
++#export TENURED="-XX:+UseConcMarkSweepGC"
++
++#export COLLECTORS="$YOUNG $TENURED"
++
++#export COLLECTORS="-XX:+UseG1GC"
++
++
++##################################################
++# Memory Pool configurations
++
++# configures the maximum size of the Java heap via the -mx flag
++# The current setting is 1 Gigabyte
++#export MAX_HEAP_SIZE=-mx1g
++
++# configures the ratio of tenured to young generation by setting the -XX:NewRatio flag.
++# The default setting is 2
++#export NEW_RATIO="-XX:NewRatio=1"
++
++# configures the size of the young generation by setting the -XX:NewSize flag.
++#export NEW_SIZE=-Xmn512m
++
++# configures the size of the survivor spaces as a ratio. The value of N spilt the space into 
++# N + 2 chunks of which N is given to eden and 1 is given to S0 and 1 to S1.
++# configures -XX:SurvivorRatio. The default value is 8
++#export SURVIVOR_RATIO=-XX:SurvivorRatio=1
++
++# configure the max tenuring threshold
++#export MAX_TENURING=-XX:MaxTenuringThreshold=15
++
++# set any other JVM flags that may need to be configured here
++#export OTHER_MEMORY_FLAGS=""
++
++export MEMORY="$MAX_HEAP_SIZE $NEW_RATIO $NEW_SIZE $SURVIVOR_RATIO $MAX_TENURING $OTHER_MEMORY_FLAGS"
++
++##################################################
++# GC logging options
++#export LOG_FILE_NAME=-Xloggc:gc.log
++#export LOG_SETTINGS="-XX:+PrintGCDetails -XX:+PrintTenuringDistribution"
++export LOG_SETTINGS="-Xlog:gc*:file=gc.log"
++export GC_LOGGING="$LOG_FILE_NAME $LOG_SETTINGS"
++
++##################################################
++# JITWatch Configurations
++
++#export JITWATCH="-XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation -XX:+TraceClassLoading -XX:+PrintAssembly"
++
++
+diff --git a/run.sh b/run.sh
+index 73aa27e..1efeac8 100755
+--- a/run.sh
++++ b/run.sh
+@@ -1,5 +1,7 @@
+ #!/bin/sh
+ 
++. ./jvm.conf
++
+ export NUMBEROFSYMBOL=100000
+ export LENGTH=3
+ export NUMBEROFTHREADS=1
+
+commit dd8d5ecd57b8be7f9cb2f3592169e8f9905b6ab2
+Author: kcpeppe <kirk@kodewerk.com>
+Date:   Thu Feb 20 12:08:19 2025 -0800
+
+    feature: first checkin of the project
+
+diff --git a/.gitignore b/.gitignore
+index 524f096..e866f47 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -22,3 +22,10 @@
+ # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+ hs_err_pid*
+ replay_pid*
++
++# OSX
++.DS_Store
++
++#IntelliJ
++mastermind.iml
++mastermind.txt
+diff --git a/compile.sh b/compile.sh
+new file mode 100755
+index 0000000..20662cc
+--- /dev/null
++++ b/compile.sh
+@@ -0,0 +1,8 @@
++#!/bin/sh
++
++if [ -d classes ]
++then
++    mkdir classes
++fi
++
++javac -classpath classes -d classes src/main/java/com/kodewerk/mastermind/*.java src/main/java/com/kodewerk/math/*.java
+diff --git a/run.sh b/run.sh
+new file mode 100755
+index 0000000..73aa27e
+--- /dev/null
++++ b/run.sh
+@@ -0,0 +1,14 @@
++#!/bin/sh
++
++export NUMBEROFSYMBOL=100000
++export LENGTH=3
++export NUMBEROFTHREADS=1
++export UNITOFWORK=1
++export INDEX=65000
++export ARGS="$NUMBEROFSYMBOL $LENGTH $NUMBEROFTHREADS $UNITOFWORK $INDEX"
++
++export FLAGS="$COLLECTORS $MEMORY $GC_LOGGING $JITWATCH"
++echo "Settings--->${FLAGS}"
++
++#  GUI Version
++java -classpath classes ${FLAGS} com.kodewerk.mastermind.MasterMindGUI $ARGS > mastermind.txt
+diff --git a/src/main/java/com/kodewerk/mastermind/Board.java b/src/main/java/com/kodewerk/mastermind/Board.java
+new file mode 100755
+index 0000000..9d08a2f
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/Board.java
+@@ -0,0 +1,96 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++
++import java.util.ArrayList;
++import java.util.Iterator;
++import java.util.concurrent.*;
++import java.util.logging.Logger;
++
++/**
++ * Board is the focal point for the game. It holds onto previous guesses. It uses these guesses to provide testing
++ * and scoring facilities.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ *
++ */
++
++public class Board {
++
++    private static final Logger LOGGER = Logger.getLogger(Board.class.getName());
++
++    private final Arrangement code;
++    private final CopyOnWriteArrayList boardEntries;
++
++    /* todo cleanup after testing */
++    public Board(Arrangement code) {
++        this.code = code;
++        this.boardEntries = new CopyOnWriteArrayList();
++    }
++
++    /**
++     * Tests an Arrangement to see is it could be a possible solution. A possible solution
++     * should not score differently then any of the previous guesses.
++     * @param guess
++     * @return boolean true if this is a possible solution
++     */
++    public boolean isPossibleSolution(Arrangement guess) {
++
++        Iterator attempts = boardEntries.iterator();
++        while (attempts.hasNext()) {
++            Score score = new Score();
++            BoardEntry entry = (BoardEntry) attempts.next();
++            for (int i = 0; i < guess.length(); i++) {
++                if (guess.symbolAt(i) == entry.getArrangement().symbolAt(i))
++                    score.addToPosition();
++                else if (entry.getArrangement().contains(guess.symbolAt(i)))
++                    score.addToPresence();
++            }
++            //LOGGER.fine("testing:" + guess.toString() + ", scored " + score.toString());
++            if (!score.equals(entry.getScore()))
++                return false;
++        }
++        return true;
++    }
++
++    /**
++     * testForJackpot is taking a score as an offical guess. An offical guess is scored against the
++     * answer and is entered into the board to be used in future testing assuming that this test fails.
++     * @param guess
++     * @return Score
++     */
++    public Score testForJackpot(Arrangement guess) {
++
++        Score score = new Score();
++        for (int i = 0; i < guess.length(); i++) {
++            if (guess.symbolAt(i) == code.symbolAt(i))
++                score.addToPosition();
++            else if (code.contains(guess.symbolAt(i)))
++                score.addToPresence();
++        }
++
++        if (score.getPositions() == code.length())
++            score.jackpot();
++        //LOGGER.fine("testing: added ->" + guess.toString() + ", scored " + score.toString());
++        this.addGuess( new BoardEntry(guess, score));
++        return score;
++    }
++
++    synchronized public void addGuess( BoardEntry entry) {
++        this.boardEntries.add( entry);
++    }
++
++    public String toString() {
++        StringBuffer buffer = new StringBuffer();
++        Iterator iter = boardEntries.iterator();
++        while (iter.hasNext()) {
++            buffer.append(iter.next().toString());
++            buffer.append("\n");
++        }
++        return buffer.toString();
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/BoardEntry.java b/src/main/java/com/kodewerk/mastermind/BoardEntry.java
+new file mode 100755
+index 0000000..9c6b7a1
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/BoardEntry.java
+@@ -0,0 +1,36 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++
++/**
++ *
++ * BoardEntry is primaraly a data holder. It represents a single guess which
++ * is placed on the game board. The guess is 'scored'.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ * 
++ */
++
++public class BoardEntry {
++    private final Arrangement arrangement;
++    private final Score score;
++
++    BoardEntry(Arrangement arrangement, Score score) {
++        this.arrangement = arrangement;
++        this.score = score;
++    }
++
++    public Score getScore() { return this.score; }
++    public Arrangement getArrangement() { return this.arrangement; }
++    public String toString() {
++        StringBuffer buffer = new StringBuffer();
++        buffer.append(arrangement.toString());
++        buffer.append(" : ");
++        buffer.append(score.toString());
++        return buffer.toString();
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/CandidateSolutionStack.java b/src/main/java/com/kodewerk/mastermind/CandidateSolutionStack.java
+new file mode 100755
+index 0000000..ce63457
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/CandidateSolutionStack.java
+@@ -0,0 +1,96 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++import com.kodewerk.math.ArrangementGroup;
++import com.kodewerk.math.Index;
++
++import java.util.Iterator;
++
++/**
++ * CandidateSolutionStack holds onto all of the possible solutions. It will passout either
++ * a single possible solution or a group of possible solutions.
++ *
++ * Note: This is not a traditional stack in the sense that it contains actual values. Doing so
++ * could create a stack of an enourmous size and take a long time to fill. Instead values are
++ * calculated upon demand. To do so the stack uses the helper class ArrangementGroup.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ * @see com.kodewerk.math.ArrangementGroup
++ * @see com.kodewerk.math.Arrangement
++ *
++ * Copyright 2005 KodeWerk. All rights reservered
++ */
++
++public class CandidateSolutionStack {
++
++    private final ArrangementGroup group;
++    private Index currentArrangementIndex;
++    final private Object lock = new Object();
++
++    public CandidateSolutionStack(ArrangementGroup group) {
++        this.currentArrangementIndex = Index.ZERO;
++        this.group = group;
++    }
++
++    private synchronized Index nextArrangementIndex() {
++        Index index;
++        index = currentArrangementIndex;
++        currentArrangementIndex = group.calculateIndex( currentArrangementIndex, Index.ONE);
++        return index;
++    }
++
++    /**
++     * returns the next single element of the ArrangementGroup
++     *
++     * @return Arrangement
++     */
++    public synchronized Arrangement pop() {
++        Index index = this.nextArrangementIndex();
++        return group.getMember(index);
++    }
++
++    private Index getNextNArragementIndcies( Index numberOfElements) {
++        Index index;
++        synchronized( lock) {
++            index = currentArrangementIndex;
++        }
++        currentArrangementIndex = group.calculateIndex( currentArrangementIndex, numberOfElements);
++        return index;
++    }
++
++    /**
++     * Returns a group of
++     * @param length
++     * @return Iterator
++     */
++    public Iterator rangeIterator( int length) {
++        return new ArrangementGroupRangeIterator( Index.valueOf(length));
++    }
++
++    /**
++     * Support for range iterator.
++     */
++    class ArrangementGroupRangeIterator implements Iterator {
++
++        Index index;
++        Index finalIndex;
++        ArrangementGroupRangeIterator( Index length) {
++            index = getNextNArragementIndcies( length);
++            finalIndex = group.calculateIndex( index, length);
++        }
++
++        public boolean hasNext() {
++            return index.compareTo( finalIndex) != 0;
++        }
++
++        public Object next() {
++            Arrangement arrangement = group.getMember(index);
++            index = group.calculateIndex( index, Index.ONE);
++            return arrangement;
++        }
++
++        public void remove() {}
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/MasterMind.java b/src/main/java/com/kodewerk/mastermind/MasterMind.java
+new file mode 100755
+index 0000000..4e80fe7
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/MasterMind.java
+@@ -0,0 +1,167 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.ArrangementGroup;
++import com.kodewerk.math.Arrangement;
++import com.kodewerk.math.Index;
++
++import java.util.ArrayList;
++import java.util.Iterator;
++
++/**
++ * MasterMind is the entry point into the game. It starts and manages all of the elements of a game
++ * including the game observers.
++ * The public methods of interest are init() and play(). There are two
++ * versions of init(). The first will randomly select an Arrangement for the final answer. The second
++ * will accept an index into the ArrangementGroup as the final answer. This second init is intended to
++ * be used when one needs to control the run time of the game.
++ *
++ * After init() called, the game is ready to be play()ed.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ */
++
++
++public class MasterMind {
++
++    private Board board;
++    private final ArrayList players = new ArrayList();
++    private final ArrayList threads = new ArrayList();
++    private Arrangement answer = null;
++    private boolean abandoned = false;
++
++    public MasterMind() {}
++
++    // KCP this logic replaces the boolean setRunning and isRunning that controlled the end of the game condition
++    public boolean isInPlay() {
++        return (this.answer == null) && ( ! abandoned);
++    }
++
++    // logic replaces the boolean setRunning and isRunning that controlled the end of the game condition
++    private void setAnswer( Arrangement answer) {
++        this.answer = answer;
++    }
++
++    public void abandon() {
++        this.abandoned = true;
++    }
++
++    // KCP this logic replaces the boolean setRunning and isRunning that controlled the end of the game condition
++    public Arrangement getAnswer() {
++        return this.answer;
++    }
++
++    /**
++     * Setup the game with this ArrangementGroup
++     *
++     * @param group
++     */
++    private void init(ArrangementGroup group) {
++        this.board = new Board(group.getRandomMember());
++    }
++
++    /**
++     * Setup the game with this ArrangementGroup and use the Arrangement found at index as the answer
++     * @param group
++     * @param index
++     */
++    private void init(ArrangementGroup group, Index index) {
++        board = new Board(group.getMember(index));
++    }
++
++    /**
++     * Start the game using numberOfPlayers (threads), the specified ArrangementGroup, and have the
++     * players work with batchSize members of the ArrangementGroup in a single call.
++     * @param numberOfPlayers
++     * @param group
++     * @param batchSize
++     * @return long milliseconds runtime.
++     */
++    private long start(int numberOfPlayers, ArrangementGroup group, int batchSize) {
++        CandidateSolutionStack stack = new CandidateSolutionStack(group);
++
++        for (int i = 0; i < numberOfPlayers; i++) {
++            Player player = new Player( this, board, stack, batchSize);
++            this.players.add(player);
++        }
++
++        Iterator iter = this.players.iterator();
++        while (iter.hasNext()) {
++            Player player = (Player) iter.next();
++            Thread thread = new Thread( player ,"Player - " + player.toString());
++            this.threads.add( thread);
++        }
++
++        iter = this.threads.iterator();
++        long time = System.currentTimeMillis();
++        while ( iter.hasNext())
++            ((Thread)iter.next()).start();
++        return time;
++    }
++
++    /**
++     * Start the game using numberOfPlayers (threads), the specified (by length and number of symbols) ArrangementGroup, and have the
++     * players work with batchSize members of the ArrangementGroup in a single call.
++     * @param numberOfSymbols
++     * @param arrangementLength
++     * @param index
++     * @param numberOfPlayers
++     * @param batchSize
++     * @return long milliseconds runtime.
++     */
++    public long play(int numberOfSymbols, int arrangementLength, Index index, int numberOfPlayers, int batchSize) {
++        ArrangementGroup group = new ArrangementGroup(arrangementLength, numberOfSymbols);
++        if (index == null)
++            this.init(group);
++        else
++            this.init(group, index);
++
++        return this.start(numberOfPlayers, group, batchSize);
++    }
++
++    public void tearDown() {
++        Iterator iter = this.threads.iterator();
++        while (iter.hasNext())
++            try {
++                ((Thread) iter.next()).join();
++            } catch (InterruptedException e) { // eat the exception
++            }
++    }
++
++    /**
++     * Players call this method to submit a guess for final scoring.
++     * 
++     * @param candidate
++     */
++    public void submitCandidateSolution( Arrangement candidate) {
++        Score score = board.testForJackpot( candidate);
++        this.guessMade( candidate, score);
++
++        if ( score.getJackpot()) {
++            this.setAnswer( candidate);
++            this.jackpotted( candidate);
++        }
++    }
++
++    // MasterMindGameObserver methods
++
++    private MasterMindGameObserver observer;
++
++    public void addMasterMindGameObserver( MasterMindGameObserver observer) {
++        this.observer = observer;
++    }
++
++    private void guessMade( Arrangement arrangement, Score score) {
++        if ( this.observer != null)
++            this.observer.guessMade( arrangement, score);
++    }
++
++    private void jackpotted( Arrangement arrangement) {
++        if ( this.observer != null)
++            this.observer.jackpotted( arrangement);
++
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/MasterMindGUI.java b/src/main/java/com/kodewerk/mastermind/MasterMindGUI.java
+new file mode 100755
+index 0000000..e531f1f
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/MasterMindGUI.java
+@@ -0,0 +1,234 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++import com.kodewerk.math.Index;
++
++import javax.swing.*;
++import java.awt.*;
++import java.awt.event.*;
++
++/**
++ *
++ * Swing based user interface for MasterMind
++ * Accepts up to five input fields
++ * Number of Symbols in the Arrangement
++ * The Length of the Arrangement (must be less then the number of symbols)
++ * number of threads (or Players)
++ * Chunk sise to pass out from the CandidateSolutionStack
++ * Optional index for solution. If not provided will be choosen randomly.
++ *
++ * Once spawning off the game, this interface becomes an observer and reports on progress
++ * as reported by MasterMind in a text box.
++ *
++ */
++    
++public class MasterMindGUI extends JFrame implements MasterMindGameObserver {
++    private static final String TITLE = "Mastermind";
++
++    private final JTextField numberOfSymbolsField = new JTextField("100000", 10);
++    private final JTextField arrangementLengthField = new JTextField("3", 10);
++    private final JTextField numberOfPlayersField = new JTextField("8", 10);
++    private final JTextField batchSizeField = new JTextField( "5000", 10);
++    private final JTextField indexField = new JTextField("642000", 10);
++    private final JTextField solution = new JTextField(10);
++    private final JTextField timer = new JTextField(10);
++    private final JTextArea output = new JTextArea();
++    private JButton runButton;
++    //private boolean running;
++    private MasterMind game;
++    private long startTime;
++
++    public MasterMindGUI() {
++        super.setTitle( TITLE);
++        super.setLayout( new BorderLayout());
++        JPanel listPane = new JPanel();
++        listPane.setLayout( new BoxLayout(listPane, BoxLayout.PAGE_AXIS));
++        listPane.setBorder(BorderFactory.createEmptyBorder(30, 70, 10, 70));
++        listPane.add( buildSettingsPanel());
++        listPane.add( buildTextArea());
++        listPane.add( buildButtonsView());
++        super.add( listPane, BorderLayout.CENTER);
++    }
++
++    public JPanel buildButtonsView() {
++        JPanel buttons = new JPanel();
++        buttons.setOpaque(false);
++        runButton = new JButton("Run Test");
++        buttons.add(runButton);
++        JButton clearButton = new JButton("Clear");
++        buttons.add(clearButton);
++        JButton abandonButton = new JButton("Abandon");
++        buttons.add(abandonButton);
++        JButton exitButton = new JButton("Exit");
++        buttons.add(exitButton);
++
++        runButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                execute();
++            }
++        });
++
++        clearButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                clear();
++            }
++        });
++
++        abandonButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                abort();
++            }
++        });
++
++        exitButton.addActionListener(new ActionListener() {
++            public void actionPerformed(ActionEvent e) {
++                System.exit(0);
++            }
++        });
++
++        return buttons;
++    }
++
++    public JPanel buildTextArea() {
++
++        JPanel panel = new JPanel();
++        panel.setLayout( new BoxLayout( panel, BoxLayout.Y_AXIS));
++        panel.add(new JLabel("Guess made - Correct Color & Position - Correct Color"));
++        output.setRows( 10);
++        panel.add( new JScrollPane( output));
++        return panel;
++    }
++
++    public JPanel buildSettingsPanel() {
++
++        JLabel label;
++
++        JPanel settingView = new JPanel(new GridLayout(0, 2, 10, 10));
++
++        settingView.setBorder(BorderFactory.createTitledBorder("Settings:"));
++        settingView.setOpaque(false);
++
++        label = new JLabel("# Symbols:", JLabel.RIGHT);
++        label.setToolTipText("Number of symbols the game will use to generate a pattern");
++        settingView.add( label);
++        settingView.add(numberOfSymbolsField);
++
++        label = new JLabel("Solution Length:", JLabel.RIGHT);
++        label.setToolTipText("Number of symbols in the solution");
++        settingView.add( label);
++        settingView.add(arrangementLengthField);
++
++        label = new JLabel("# Players:", JLabel.RIGHT);
++        label.setToolTipText("The role of a player is to make guesses. Each player will have it's own thread");
++        settingView.add( label);
++        settingView.add(numberOfPlayersField);
++
++        label = new JLabel("Batch size", JLabel.RIGHT);
++        label.setToolTipText("Allow the player to take more than 1 candiate solution from the solution stack.");
++        settingView.add( label);
++        settingView.add( batchSizeField);
++
++        label = new JLabel("Select Solution Index:", JLabel.RIGHT);
++        label.setToolTipText("Set the solution rather than having a random solution choosen. The value is an index into the set of all possible solutions");
++        settingView.add(label);
++        settingView.add(indexField);
++        this.timer.setEditable(false);
++        label = new JLabel("Time (ms):", JLabel.RIGHT);
++        label.setToolTipText("Run time in ms");
++        settingView.add(label);
++
++        settingView.add(timer);
++		
++        label = new JLabel("Solution:", JLabel.RIGHT);
++        label.setToolTipText("Solution to the last game");
++        settingView.add(label);
++        this.solution.setEditable(false);
++        settingView.add(solution);
++
++        return settingView;
++    }
++
++    private void setRunning( boolean value) {
++        try {
++            if ( value) {
++                this.startTime = System.currentTimeMillis();
++                SwingUtilities.invokeLater(new Runnable() {
++                    public void run() {
++                        solution.setText("Running");
++                        solution.setBackground(Color.GREEN);
++                    }
++                });
++            } else {
++                SwingUtilities.invokeLater(() -> solution.setBackground(Color.WHITE));
++	    }
++        } finally {
++            runButton.setEnabled( ! value);
++            //this.running = value;
++        }
++    }
++
++    //private boolean isRunning() { return this.running; }
++
++    public void guessMade(final Arrangement arrangement, final Score score) {
++        SwingUtilities.invokeLater(new Runnable() {
++            public void run() {
++                output.append(arrangement.toString() + " : " + score.toString() + "\n");
++            }
++        });
++    }
++
++    public void jackpotted(final Arrangement answer) {
++        this.setRunning(false);
++        SwingUtilities.invokeLater(new Runnable() {
++            public void run() {
++                solution.setText(answer.toString());
++	        timer.setText( Long.toString(System.currentTimeMillis() - startTime));
++            }
++        });
++    }
++
++    public void execute() {
++        System.gc();
++        game = new MasterMind();
++        int numberOfSymbols = Integer.parseInt(numberOfSymbolsField.getText());
++        int arrangementLength = Integer.parseInt(arrangementLengthField.getText());
++        int numberOfPlayers = Integer.parseInt(numberOfPlayersField.getText());
++        int batchSize = Integer.parseInt( batchSizeField.getText());
++
++        boolean indexSet = !indexField.getText().equals("");
++        Index index = null;
++        if (indexSet) {
++            index = new Index(indexField.getText());
++        }
++
++        game.addMasterMindGameObserver( this);
++        this.setRunning( true);
++        game.play(numberOfSymbols, arrangementLength, index, numberOfPlayers, batchSize);
++    }
++
++    public void clear() {
++        SwingUtilities.invokeLater(new Runnable() {
++            public void run() {
++                solution.setText("");
++                output.setText("");
++                timer.setText("");
++            }
++        });
++    }
++
++    public void abort() {
++        this.game.abandon();
++        this.clear();
++        this.setRunning(false);
++    }
++
++    public static void main(String[] args) {
++        MasterMindGUI frame = new MasterMindGUI();
++        frame.pack();
++        frame.setResizable(false);
++        frame.setLocationRelativeTo(null);
++        frame.setDefaultCloseOperation(EXIT_ON_CLOSE);
++        frame.setVisible(true);
++
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/MasterMindGameObserver.java b/src/main/java/com/kodewerk/mastermind/MasterMindGameObserver.java
+new file mode 100755
+index 0000000..6e6422c
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/MasterMindGameObserver.java
+@@ -0,0 +1,21 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++
++/**
++ *
++ * Interface to be implemented by any process interesting in watching a game. Primaly used as a call-back
++ * mechanisum so that observer is notified of significant gaming events.
++ *
++ * @author kirk
++ * @since Auguest 11, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ */
++public interface MasterMindGameObserver {
++
++    void guessMade( Arrangement arrangement, Score score);
++    void jackpotted( Arrangement arrangement);
++
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/MasterMindText.java b/src/main/java/com/kodewerk/mastermind/MasterMindText.java
+new file mode 100755
+index 0000000..4f24745
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/MasterMindText.java
+@@ -0,0 +1,88 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++import com.kodewerk.math.Index;
++
++/**
++ * Text based user interface for MasterMind
++ * Accepts up to five parameters
++ * Number of Symbols in the Arrangement
++ * The Length of the Arrangement (must be less then the number of symbols)
++ * number of threads (or Players)
++ * Chunk sise to pass out from the CandidateSolutionStack
++ * Optional index for solution. If not provided will be choosen randomly.
++ *
++ * Once spawning off the game, this interface becomes an observer and reports on progress
++ * as reported by MasterMind.
++ *
++ */
++
++public class MasterMindText implements MasterMindGameObserver {
++    private final Object lock = new Object();
++    private boolean running = true;
++
++    private long waitForSolution() {
++        synchronized (this.lock) {
++            while ( this.running) {
++                try {
++                    this.lock.wait();
++                } catch (InterruptedException e) {
++                }
++            }
++        }
++        return System.currentTimeMillis();
++    }
++
++    public void play(int numberOfSymbols, int arrangementLength, Index index, int numberOfPlayers, int unitOfWork) {
++
++        System.out.println("numberOfSymbols = " + numberOfSymbols);
++        System.out.println("arrangementLength = " + arrangementLength);
++        System.out.println("numberOfPlayers = " + numberOfPlayers);
++        System.out.println("Size of Unit Of Work = " + unitOfWork);
++        System.out.println("index = " + index);
++
++        MasterMind game = new MasterMind();
++        game.addMasterMindGameObserver( this);
++        long startTime = game.play( numberOfSymbols, arrangementLength, index, numberOfPlayers, unitOfWork);
++        long stopTime = this.waitForSolution();
++        game.tearDown();
++        System.out.println("Solution was found in " + (stopTime - startTime) + "ms");
++    }
++
++    synchronized public void guessMade(Arrangement arrangement, Score score) {
++        System.out.println( "Guess -> " + arrangement.toString() + " : " + score.toString());
++    }
++
++    public void jackpotted(Arrangement solution) {
++        System.out.println("Solution : " + solution.toString());
++        synchronized ( this.lock) {
++            this.running = false;
++            this.lock.notify();
++        }
++    }
++
++    /**
++     * Arguments
++     * - number of symbols
++     * - number of choices
++     * - number of threads
++     *
++     * @param args
++     */
++    public static void main(String[] args) {
++
++        MasterMindText textGame = new MasterMindText();
++        if ((args.length < 4) || (args.length > 5))
++            return;
++        int numberOfSymbols = Integer.parseInt(args[0]);
++        Index index = null;
++        boolean indexSet = args.length == 5;
++        if (indexSet) {
++            index = new Index(args[4]);
++        }
++        int arrangementLength = Integer.parseInt(args[1]);
++        int numberOfThreads = Integer.parseInt(args[2]);
++        int batchSize = Integer.parseInt( args[ 3]);
++        textGame.play(numberOfSymbols, arrangementLength, index, numberOfThreads, batchSize);
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/com/kodewerk/mastermind/Player.java b/src/main/java/com/kodewerk/mastermind/Player.java
+new file mode 100755
+index 0000000..3e11e91
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/Player.java
+@@ -0,0 +1,62 @@
++package com.kodewerk.mastermind;
++
++import com.kodewerk.math.Arrangement;
++import com.kodewerk.math.Index;
++
++import java.util.Iterator;
++import java.util.logging.Logger;
++
++/**
++ * The Player is the driving element of the game. There can be more then 1 players making guesses if need be.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ */
++
++public class Player implements Runnable {
++
++    private static final Logger LOGGER = Logger.getLogger(Player.class.getName());
++    private final MasterMind game;
++    private final Board board;
++    private final CandidateSolutionStack stack;
++    private int batchSize;
++
++    public Player(MasterMind game, Board board, CandidateSolutionStack stack, int batchSize) {
++        this.game = game;
++        this.board = board;
++        this.stack = stack;
++        this.batchSize = batchSize;
++    }
++
++    /**
++     * This is the primary execution loop in the application. It takes a candiate solution off of the stack and
++     * tests it against the board. If the test passes, then the guess is submitted to the game as a candidate
++     * solution. This tread runs until the game is marked as finished.
++     */
++    public void run() {
++
++        if ( batchSize == 1) {
++            while ( this.game.isInPlay()) {
++                testCandidate(this.stack.pop());
++            }
++        } else {
++            while (this.game.isInPlay()) {
++                Iterator iter = this.stack.rangeIterator(batchSize);
++                while (iter.hasNext() && this.game.isInPlay()) {
++                    Arrangement candidate = (Arrangement) iter.next();
++                    testCandidate(candidate);
++                }
++            }
++        }
++    }
++
++    private void testCandidate(Arrangement candidate) {
++        if (board.isPossibleSolution(candidate)) {
++            //LOGGER.fine("testing:submitting" + candidate.toString());
++            game.submitCandidateSolution(candidate);
++        }
++    }
++}
+diff --git a/src/main/java/com/kodewerk/mastermind/Score.java b/src/main/java/com/kodewerk/mastermind/Score.java
+new file mode 100755
+index 0000000..c19d03c
+--- /dev/null
++++ b/src/main/java/com/kodewerk/mastermind/Score.java
+@@ -0,0 +1,57 @@
++package com.kodewerk.mastermind;
++
++/**
++ * A score has two element, symbols that are correct and symbols that are correct and in the collect position
++ * in relationship to the true answer. A symbol can only fall into one of these two categories. The score is
++ * said to represent a jackpot situation when the number of elements in the correct position equals then length
++ * of the Arrangement.
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ *
++ * Copyright 2005 KodeWerk, All rights reserved.
++ */
++
++public class Score {
++    private boolean jackpot = false;
++    private int positions = 0;
++    private int presence = 0;
++
++    public void addToPosition() { positions++; }
++    public void addToPresence() { presence++; }
++
++    public int getPositions() { return positions; }
++    private int getPresence() { return presence; }
++
++    public void jackpot() {
++        this.jackpot = true;
++    }
++
++    /**
++     * does this score represent a jackpot
++     * @return boolean true for score that has jackpotted.
++     */
++    public boolean getJackpot() {
++        return this.jackpot;
++    }
++
++    public boolean equals(Object obj) {
++        Score score = (Score) obj;
++        return (score.getPositions() == positions) && (score.getPresence() == presence);
++    }
++
++    public String toString() {
++        StringBuffer buffer = new StringBuffer();
++        buffer.append(positions);
++        buffer.append(", ");
++        buffer.append(presence);
++        return buffer.toString();
++    }
++
++    public void reset() {
++        jackpot = false;
++        positions = 0;
++        presence = 0;
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/com/kodewerk/math/Arrangement.java b/src/main/java/com/kodewerk/math/Arrangement.java
+new file mode 100755
+index 0000000..0035374
+--- /dev/null
++++ b/src/main/java/com/kodewerk/math/Arrangement.java
+@@ -0,0 +1,53 @@
++package com.kodewerk.math;
++
++/**
++ *
++ * An arrangement is an ordering of N symbols. No symbol is repeated.
++ * @author kirk
++ * @since Jun 26, 2005
++ * @version 1.0
++ */
++
++public class Arrangement {
++
++    private final int[] symbols;
++
++    public Arrangement(int[] symbols) {
++        this.symbols = symbols;
++    }
++
++    public int length() {
++        return symbols.length;
++    }
++
++    public int symbolAt(int index) {
++        return symbols[index];
++    }
++
++    public boolean contains(int symbol) {
++        for (int index = 0; index < symbols.length; index++) {
++            if (this.symbols[index] == symbol)
++                return true;
++        }
++        return false;
++    }
++
++    public boolean equals(Object o) {
++        if (!(o instanceof Arrangement)) return false;
++        Arrangement arrangement = (Arrangement) o;
++        for (int i = 0; i < symbols.length; i++) {
++            if (symbols[i] != arrangement.symbols[i]) return false;
++        }
++        return true;
++    }
++
++    public String toString() {
++        StringBuffer buffer = new StringBuffer();
++        for (int i = 0; i < symbols.length - 1; i++) {
++            buffer.append(symbols[i]);
++            buffer.append(", ");
++        }
++        buffer.append(symbols[ symbols.length - 1]);
++        return buffer.toString();
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/com/kodewerk/math/ArrangementGroup.java b/src/main/java/com/kodewerk/math/ArrangementGroup.java
+new file mode 100644
+index 0000000..f031dcc
+--- /dev/null
++++ b/src/main/java/com/kodewerk/math/ArrangementGroup.java
+@@ -0,0 +1,99 @@
++package com.kodewerk.math;
++
++import java.util.Random;
++
++public class ArrangementGroup {
++
++    private int[] symbols;
++    private int arrangementLength;
++    private Index length;
++    private int numberOfSymbols;
++
++    public ArrangementGroup(int arrangementLength, int numberOfSymbols) {
++        symbols = new int[numberOfSymbols];
++        for (int i = 0; i < numberOfSymbols; i++) {
++            symbols[i] = i;
++        }
++        this.arrangementLength = arrangementLength;
++        this.numberOfSymbols = numberOfSymbols;
++    }
++
++    public Index getLength() {
++        if (length == null)
++            length = com.kodewerk.math.Math.permutationAsIndex(numberOfSymbols, arrangementLength);
++        return length;
++    }
++
++    /**
++     * Since the cyclic group is ordered, ever arrangement in the group has an index. This method calculates the
++     * arrangement for a given index.
++     *
++     * @param i
++     * @return Arrangement at index
++     */
++    public Arrangement getMember(Index i) {
++        int[] elements = new int[arrangementLength];
++        this.calculateElementIndex(elements, 0, i.remainder(getLength()),
++                this.arrangementLength, this.symbols, numberOfSymbols);
++        return new Arrangement(elements);
++    }
++
++    private void calculateElementIndex(int[] results, int position,
++                                       Index index, int elementLength,
++                                       int[] symbols, int remainingSymbols) {
++
++        // end of recursion.
++        // formulation is a bit ugly because Index constructor doesn't accept int as parameter
++        if (elementLength == 1) {
++            results[position] = symbols[index.remainder(new Index(Integer.toString(remainingSymbols))).intValue()];
++            return;
++        }
++
++        Index foldValue = Math.permutationAsIndex(remainingSymbols - 1,
++                elementLength - 1);
++        int symbolPosition = index.divide(foldValue).intValue();
++        results[position] = symbols[symbolPosition];
++
++        // we've calculated the nth position, now we can reduce the problem by one and repeat for nth-1.
++        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainder(
++                foldValue) : index;
++        int[] newSymbols = removeSymbol(symbols, symbolPosition);
++        this.calculateElementIndex(results, position + 1, newIndex,
++                elementLength - 1, newSymbols, remainingSymbols - 1);
++    }
++
++    // need to remove the used symbol from the list of allowed.
++    private int[] removeSymbol(int[] symbols, int symbolPosition) {
++        int[] newSymbols = new int[symbols.length - 1];
++        int position = 0;
++        for (; position < symbolPosition; position++) {
++            newSymbols[position] = symbols[position];
++        }
++        for (int i = symbolPosition + 1; i < symbols.length; i++) {
++            newSymbols[position++] = symbols[i];
++        }
++
++        return newSymbols;
++    }
++
++    /**
++     * Controls indexing in the cyclic group.
++     *
++     * @param current
++     * @param increment
++     * @return Index index
++     */
++    public Index calculateIndex(Index current, Index increment) {
++        return current.add(increment).remainder(this.getLength());
++    }
++
++    public Arrangement getRandomMember() {
++        Random generator = new Random();
++        int numberOfBytes = this.getLength().toByteArray().length;
++        byte[] random = new byte[numberOfBytes + (generator.nextInt() % numberOfBytes)];
++        generator.nextBytes(random);
++        Index index = new Index(random);
++        index = index.abs().remainder(this.getLength());
++        return this.getMember(index);
++    }
++}
+diff --git a/src/main/java/com/kodewerk/math/Index.java b/src/main/java/com/kodewerk/math/Index.java
+new file mode 100644
+index 0000000..6a590a8
+--- /dev/null
++++ b/src/main/java/com/kodewerk/math/Index.java
+@@ -0,0 +1,66 @@
++package com.kodewerk.math;
++
++import java.math.BigInteger;
++
++public class Index {
++
++    public static final Index ZERO = new Index(0);
++    public static final Index ONE = new Index(1);
++    private BigInteger value;
++
++    public static Index valueOf(int intValue) {
++        return new Index(intValue);
++    }
++
++    public static Index valueOf(long longValue) {
++        return new Index(longValue);
++    }
++
++    public Index(BigInteger newValue) {
++        value = newValue;
++    }
++
++    public Index(String newValue) {
++        value = new BigInteger(newValue);
++    }
++
++    public Index(byte[] bytes) {
++        value = new BigInteger(bytes);
++    }
++
++    private Index(long newValue) {
++        value = BigInteger.valueOf(newValue);
++    }
++
++    public Index add(Index index) {
++        return new Index(value.add(index.value));
++    }
++
++    public Index remainder(Index foldValue) {
++        return new Index(value.remainder(foldValue.value));
++    }
++
++    public Index divide(Index divisor) {
++        return new Index(value.divide(divisor.value));
++    }
++
++    public int intValue() {
++        return value.intValue();
++    }
++
++    public int compareTo(Index foldValue) {
++        return value.compareTo(foldValue.value);
++    }
++
++    public byte[] toByteArray() {
++        return value.toByteArray();
++    }
++
++    public Index abs() {
++        return new Index(value.abs());
++    }
++
++    public Index multiply(Index index) {
++        return new Index(value.multiply(index.value));
++    }
++}
+diff --git a/src/main/java/com/kodewerk/math/Math.java b/src/main/java/com/kodewerk/math/Math.java
+new file mode 100755
+index 0000000..ae7a565
+--- /dev/null
++++ b/src/main/java/com/kodewerk/math/Math.java
+@@ -0,0 +1,46 @@
++package com.kodewerk.math;
++
++import java.math.BigInteger;
++
++/**
++ *
++ * @author kirk
++ * @since Jun 30, 2005
++ * @version 1.0
++ */
++public final class Math {
++
++    /**
++     * P(n,m) = n! / (n-m)! = n * (n-1) *... (n-m)
++     *
++     * @param n
++     * @param m
++     * @return Index
++     */
++    public static Index permutationAsIndex(int n, int m) {
++        Index value = Index.ONE;
++
++        for (int i = n; i > n - m; i--) {
++            value = value.multiply(Index.valueOf(i));
++        }
++        return value;
++    }
++
++    public static BigInteger permutationAsBigInteger(int n, int m) {
++        BigInteger value = BigInteger.ONE;
++
++        for (int i = n; i > n - m; i--) {
++            value = value.multiply(BigInteger.valueOf((long)i));
++        }
++        return value;
++    }
++
++    public static long permutationAsLong(int n, int m) {
++        long value = 1L;
++
++        for (int i = n; i > n - m; i--) {
++            value *= i;
++        }
++        return value;
++    }
++}
+diff --git a/src/main/java/com/kodewerk/util/LockMonitor.java b/src/main/java/com/kodewerk/util/LockMonitor.java
+new file mode 100755
+index 0000000..23afae0
+--- /dev/null
++++ b/src/main/java/com/kodewerk/util/LockMonitor.java
+@@ -0,0 +1,56 @@
++package com.kodewerk.util;
++
++
++import java.lang.management.LockInfo;
++import java.lang.management.ManagementFactory;
++import java.lang.management.ThreadInfo;
++import java.lang.management.ThreadMXBean;
++import java.util.HashMap;
++import java.util.Map;
++
++/**
++ *
++ * @author kirk
++ * @since Jun 30, 2011
++ * @version 1.0
++ *
++ * Copyright 2011 KodeWerk, All rights reserved.
++ *
++ */
++
++public class LockMonitor {
++	
++	private static void runProfile() {
++		try {
++			final int noSeconds = 100;
++			final int sleepMillis = 50;
++			final int noSamples = noSeconds * 1000 / sleepMillis;
++			
++			ThreadMXBean thb = ManagementFactory.getThreadMXBean();
++			Map<String,Integer> blockCounts = new HashMap<String, Integer>(50);
++			for (int i = 0; i < noSamples ; i++) {
++				long[] ids = thb.getAllThreadIds();
++				ThreadInfo[] infs = thb.getThreadInfo(ids, 0);
++				for (ThreadInfo ti : infs) {
++					LockInfo lockInf = ti.getLockInfo();
++					if (lockInf != null) {
++						String key = lockInf.toString();
++						Integer cnt = blockCounts.get(key);
++						blockCounts.put(key, cnt == null ? 1 : cnt+1);
++					}
++				}
++				
++				Thread.sleep(sleepMillis);
++			}
++			
++			System.out.println("Locks:");
++			for (String lockName : blockCounts.keySet()) {
++				System.out.println(lockName + " : " + blockCounts.get(lockName));
++			}
++		} catch (InterruptedException iex) {
++			Thread.currentThread().interrupt();
++    }
++}
++
++
++}
+
+commit 2ec5928e429003c236a61b965b26e46f3ae3ff71
+Author: Kirk Pepperdine <kirk@kodewerk.com>
+Date:   Thu Feb 20 11:11:05 2025 -0800
+
+    Initial commit
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..524f096
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,24 @@
++# Compiled class file
++*.class
++
++# Log file
++*.log
++
++# BlueJ files
++*.ctxt
++
++# Mobile Tools for Java (J2ME)
++.mtj.tmp/
++
++# Package Files #
++*.jar
++*.war
++*.nar
++*.ear
++*.zip
++*.tar.gz
++*.rar
++
++# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
++hs_err_pid*
++replay_pid*
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..261eeb9
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,201 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "[]"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright [yyyy] [name of copyright owner]
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..88051f1
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,2 @@
++# mastermind
++fun demo using mastermind game

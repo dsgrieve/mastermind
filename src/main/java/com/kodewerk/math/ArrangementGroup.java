@@ -45,17 +45,24 @@ public class ArrangementGroup {
         // end of recursion.
         // formulation is a bit ugly because Index constructor doesn't accept int as parameter
         if (elementLength == 1) {
-            results[position] = symbols[index.remainderInPlace(new Index(Integer.toString(remainingSymbols))).intValue()];
+            int symbolIndex = index.remainder(new Index(Integer.toString(remainingSymbols))).intValue();
+            if (symbolIndex >= symbols.length) {
+                throw new ArrayIndexOutOfBoundsException("Index " + symbolIndex + " out of bounds for length " + symbols.length);
+            }
+            results[position] = symbols[symbolIndex];
             return;
         }
 
         Index foldValue = Math.permutationAsIndex(remainingSymbols - 1,
                 elementLength - 1);
-        int symbolPosition = index.divideInPlace(foldValue).intValue();
+        int symbolPosition = index.divide(foldValue).intValue();
+        if (symbolPosition >= symbols.length) {
+            throw new ArrayIndexOutOfBoundsException("Index " + symbolPosition + " out of bounds for length " + symbols.length);
+        }
         results[position] = symbols[symbolPosition];
 
         // we've calculated the nth position, now we can reduce the problem by one and repeat for nth-1.
-        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainderInPlace(
+        Index newIndex = (index.compareTo(foldValue) >= 0) ? index.remainder(
                 foldValue) : index;
         int[] newSymbols = removeSymbol(symbols, symbolPosition);
         this.calculateElementIndex(results, position + 1, newIndex,
